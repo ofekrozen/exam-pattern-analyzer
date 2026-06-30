@@ -21,7 +21,7 @@ from google.genai import types as genai_types
 from google.adk.models.llm_response import LlmResponse
 
 from security.validators import AnalysisRequest
-from tools.drive_client import list_pdf_files
+from tools.drive_client import find_pdfs_dfs
 from security.security_agent import create_security_agent
 from agents.identifier_agent import create_identifier_agent
 from agents.exam_analyzer_agent import create_exam_analyzer_agent
@@ -123,7 +123,7 @@ def run_analysis(drive_folder_url: str, lecturer_name: str) -> dict:
 
     # --- Step 1: List candidate PDF files (no LLM needed for this step) ---
     try:
-        candidate_files = list_pdf_files(request.drive_folder_url)
+        candidate_files = find_pdfs_dfs(request.drive_folder_url)
     except PermissionError as e:
         return {"error": str(e)}
     except Exception as e:
@@ -155,7 +155,7 @@ def run_analysis(drive_folder_url: str, lecturer_name: str) -> dict:
 
     print(
         f"\n🔎 Scanning {len(candidate_files)} PDF(s) for exams by "
-        f"'{request.lecturer_name}'...\n"
+        f"'{request.lecturer_name}' (searched root folder and sub-folders)...\n"
     )
 
     events = runner.run(

@@ -3,11 +3,11 @@ from unittest.mock import patch, MagicMock
 from main import run_analysis, build_pipeline
 
 
-@patch('main.list_pdf_files')
+@patch('main.find_pdfs_dfs')
 @patch('main.Runner')
-def test_run_analysis_success(mock_runner_cls, mock_list_pdf_files):
+def test_run_analysis_success(mock_runner_cls, mock_find_pdfs_dfs):
     # Setup mocks
-    mock_list_pdf_files.return_value = [
+    mock_find_pdfs_dfs.return_value = [
         {"id": "file_1", "name": "Calculus_Exam1.pdf", "size": 500}
     ]
 
@@ -44,7 +44,7 @@ def test_run_analysis_success(mock_runner_cls, mock_list_pdf_files):
     )
 
     # Verify mock interactions
-    mock_list_pdf_files.assert_called_once_with(
+    mock_find_pdfs_dfs.assert_called_once_with(
         "https://drive.google.com/drive/folders/1SCeb1nRR4ivUyFy8yrviPCg1yihm961c"
     )
     mock_runner.run.assert_called_once()
