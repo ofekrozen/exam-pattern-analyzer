@@ -8,7 +8,7 @@ from google.adk.tools import FunctionTool
 
 from tools.drive_client import download_file_bytes
 from tools.gemini_vision import identify_lecturer_and_course
-from tools.validators import names_match
+from security.validators import names_match
 
 
 def check_lecturer_match(file_id: str, file_name: str, target_lecturer: str) -> dict:

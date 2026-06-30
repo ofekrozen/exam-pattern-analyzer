@@ -1,0 +1,33 @@
+# .semgrep.yaml
+# Custom Semgrep rules to detect security and quality violations in our agent code.
+
+rules:
+  - id: detect-hardcoded-google-api-key
+    patterns:
+      - pattern-either:
+          - pattern: GOOGLE_API_KEY = "$VALUE"
+          - pattern: GOOGLE_DRIVE_API_KEY = "$VALUE"
+          - pattern: os.environ[...] = "$VALUE"
+    message: "Potential hardcoded API key or credential detected. Always load secrets from environment variables using dotenv."
+    languages: [python]
+    severity: ERROR
+
+  - id: raw-input-in-llm-instruction
+    patterns:
+      - pattern: |
+          LlmAgent(
+            ...,
+            instruction=...,
+            ...
+          )
+      - pattern-not:
+          - pattern: |
+              LlmAgent(
+                ...,
+                instruction=...,
+                before_model_callback=skip_if_unsafe_callback,
+                ...
+              )
+    message: "LlmAgent defined without skip_if_unsafe_callback callback. All agents must register the safety callback to protect against prompt injection bypass."
+    languages: [python]
+    severity: WARNING

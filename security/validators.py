@@ -1,4 +1,4 @@
-# tools/validators.py
+# security/validators.py
 # Security layer: validates all user input before any agent or API call runs.
 # This guards against malformed URLs, prompt injection via the lecturer name
 # field, and unbounded API usage (cost/quota protection).
@@ -62,10 +62,10 @@ def normalize_name_for_matching(name: str) -> str:
         'ד"ר', "דר'", "פרופ'", "פרופסור", "מר", "גב'",
         "dr.", "prof.", "professor", "mr.", "ms.", "mrs.",
     ]
-    cleaned = name.strip()
+    cleaned = name.strip().lower()
     for t in titles:
         cleaned = cleaned.replace(t, "")
-    return cleaned.strip().lower()
+    return cleaned.strip()
 
 
 def names_match(target_name: str, extracted_name: str) -> bool:

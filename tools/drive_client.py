@@ -6,7 +6,7 @@
 
 import os
 import requests
-from tools.validators import extract_folder_id, MAX_FILES_TO_SCAN
+from security.validators import extract_folder_id, MAX_FILES_TO_SCAN
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 

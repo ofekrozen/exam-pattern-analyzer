@@ -1,0 +1,28 @@
+# .pre-commit-config.yaml
+# Configuration for git pre-commit hooks to automate quality and test validations.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # Running pytest locally before commits
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: ./venv/Scripts/pytest.exe
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+  # Semgrep static analysis (uncomment if running in WSL, Linux, or CI-CD)
+  # - repo: https://github.com/semgrep/semgrep
+  #   rev: v1.75.0
+  #   hooks:
+  #     - id: semgrep
+  #       args: ['--config=.semgrep.yaml', '--error']
