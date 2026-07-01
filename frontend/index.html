@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Pattern Analyzer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="hero">
+            <h1 class="gradient-text">Exam Pattern Analyzer</h1>
+            <p>Uncover your lecturer's secrets with AI.</p>
+        </header>
+
+        <main>
+            <section class="input-card glass-panel">
+                <form id="analyze-form">
+                    <div class="form-group">
+                        <label for="driveUrl">Google Drive Folder URL</label>
+                        <input type="url" id="driveUrl" placeholder="https://drive.google.com/..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="lecturerName">Lecturer Name</label>
+                        <input type="text" id="lecturerName" placeholder="e.g. Dr. Smith" required>
+                    </div>
+                    <button type="submit" id="submitBtn">Start Analysis</button>
+                </form>
+            </section>
+
+            <section class="terminal glass-panel hidden" id="terminal-section">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">System Log</span>
+                </div>
+                <div class="terminal-body" id="terminal-output"></div>
+            </section>
+
+            <section class="results hidden" id="results-section">
+                <h2 class="gradient-text">Analysis Results</h2>
+                <div class="results-grid" id="results-grid">
+                    <!-- Dynamic content will be injected here -->
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

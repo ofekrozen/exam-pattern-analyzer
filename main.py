@@ -12,13 +12,15 @@
 
 import os
 import json
+import asyncio
 from dotenv import load_dotenv
 
-from google.adk.agents import SequentialAgent
+from google.adk.workflow import Workflow
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 from google.adk.models.llm_response import LlmResponse
+from fastapi.concurrency import run_in_threadpool
 
 from security.validators import AnalysisRequest
 from tools.drive_client import find_pdfs_dfs
@@ -36,12 +38,12 @@ if not os.getenv("GOOGLE_API_KEY"):
     )
 
 
-def skip_if_unsafe_callback(ctx, request) -> LlmResponse | None:
+def skip_if_unsafe_callback(callback_context, llm_request) -> LlmResponse | None:
     """
     Bypasses LLM model calls for downstream agents if the Security Agent
     has flagged the request as unsafe.
     """
-    security_status = ctx.state.get("security_status")
+    security_status = callback_context.state.get("security_status")
     if security_status:
         is_safe = True
         reason = None
@@ -74,7 +76,7 @@ def skip_if_unsafe_callback(ctx, request) -> LlmResponse | None:
     return None
 
 
-def build_pipeline() -> SequentialAgent:
+def build_pipeline() -> Workflow:
     """Builds the 5-agent sequential pipeline. Each agent reads/writes shared session state."""
     security_agent = create_security_agent()
 
@@ -90,96 +92,76 @@ def build_pipeline() -> SequentialAgent:
     test_agent = create_test_agent()
     test_agent.before_model_callback = skip_if_unsafe_callback
 
-    return SequentialAgent(
+    return Workflow(
         name="exam_pattern_pipeline",
         description=(
             "Identifies a lecturer's past exams in a Drive folder, analyzes "
             "their structure, and synthesizes study recommendations, while enforcing "
             "security and quality controls."
         ),
-        sub_agents=[
-            security_agent,
-            identifier_agent,
-            exam_analyzer_agent,
-            pattern_synthesizer_agent,
-            test_agent,
+        edges=[
+            ("START", security_agent, identifier_agent, exam_analyzer_agent, pattern_synthesizer_agent, test_agent)
         ],
     )
 
 
-def run_analysis(drive_folder_url: str, lecturer_name: str) -> dict:
+async def run_analysis_stream(drive_folder_url: str, lecturer_name: str, session_id: str):
     """
-    Main entry point: validates input, scans the Drive folder, and runs
-    the full agent pipeline to produce a study report.
+    Asynchronous and streaming entry point. Validates inputs, scans Drive,
+    and yields status updates and pipeline events as they occur.
     """
-
-    # --- Security: validate all input before any API call ---
+    # 1. Validation
     try:
-        request = AnalysisRequest(
-            drive_folder_url=drive_folder_url, lecturer_name=lecturer_name
-        )
+        request = AnalysisRequest(drive_folder_url=drive_folder_url, lecturer_name=lecturer_name)
     except ValueError as e:
-        return {"error": f"Invalid input: {str(e)}"}
+        yield {"event": "error", "data": f"Invalid input: {str(e)}"}
+        return
 
-    # --- Step 1: List candidate PDF files (no LLM needed for this step) ---
+    # 2. Drive Scan (Run in threadpool to avoid blocking the ASGI event loop)
+    yield {"event": "status", "data": "Scanning Google Drive folder..."}
     try:
-        candidate_files = find_pdfs_dfs(request.drive_folder_url)
-    except PermissionError as e:
-        return {"error": str(e)}
+        candidate_files = await run_in_threadpool(find_pdfs_dfs, request.drive_folder_url)
     except Exception as e:
-        return {"error": f"Failed to list Drive files: {str(e)}"}
+        yield {"event": "error", "data": f"Failed to list Drive files: {str(e)}"}
+        return
 
     if not candidate_files:
-        return {"error": "No PDF files found in this folder."}
+        yield {"event": "error", "data": "No PDF files found in this folder."}
+        return
 
-    # --- Steps 2-5: Run the agent pipeline ---
-    prompt = f"""
-    Target lecturer: {request.lecturer_name}
+    yield {"event": "status", "data": f"Found {len(candidate_files)} candidate PDFs. Booting agent pipeline..."}
 
-    Candidate exam files in the folder:
-    {json.dumps(candidate_files, indent=2, ensure_ascii=False)}
-
-    Check input safety, find which files belong to this lecturer, analyze the structure of
-    each matched exam, and produce a final verified study pattern report.
-    """
-
+    # 3. Create Session (Awaited directly on the running loop)
     session_service = InMemorySessionService()
-    session_service.create_session(
-        app_name="exam_analyzer", user_id="student", session_id="s1"
+    await session_service.create_session(
+        app_name="exam_analyzer", user_id="student", session_id=session_id
     )
 
     pipeline = build_pipeline()
-    runner = Runner(
-        agent=pipeline, app_name="exam_analyzer", session_service=session_service
-    )
+    runner = Runner(agent=pipeline, app_name="exam_analyzer", session_service=session_service)
 
-    print(
-        f"\n🔎 Scanning {len(candidate_files)} PDF(s) for exams by "
-        f"'{request.lecturer_name}' (searched root folder and sub-folders)...\n"
-    )
+    prompt = f"""
+    Target lecturer: {request.lecturer_name}
 
-    events = runner.run(
+    Candidate exam files in the folder: {json.dumps(candidate_files)}
+    """
+
+    # 4. Stream events using run_async
+    async for event in runner.run_async(
         user_id="student",
-        session_id="s1",
+        session_id=session_id,
         new_message=genai_types.Content(
             role="user", parts=[genai_types.Part(text=prompt)]
         ),
-    )
-
-    for event in events:
+    ):
         if event.is_final_response():
+            # This is the final output from the Test Agent
             final_text = event.content.parts[0].text
             try:
-                return json.loads(final_text)
+                yield {"event": "result", "data": json.loads(final_text)}
             except json.JSONDecodeError:
-                return {"raw_output": final_text}
-
-    return {"error": "No response from pipeline"}
-
-
-if __name__ == "__main__":
-    result = run_analysis(
-        drive_folder_url="https://drive.google.com/drive/folders/1SCeb1nRR4ivUyFy8yrviPCg1yihm961c",
-        lecturer_name="REPLACE_WITH_LECTURER_NAME",
-    )
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+                yield {"event": "result", "data": {"raw_output": final_text}}
+        else:
+            # Emit intermediate progress
+            agent_name = getattr(event, "agent_name", "pipeline")
+            yield {"event": "progress", "data": f"{agent_name.replace('_', ' ').title()} is processing..."}

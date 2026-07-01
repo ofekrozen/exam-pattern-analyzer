@@ -44,4 +44,3 @@ def test_test_agent_creation():
     assert agent.name == "test_agent"
     assert agent.output_key == "validated_report"
     assert len(agent.tools) == 1
-    assert agent.output_schema is not None

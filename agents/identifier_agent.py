@@ -5,6 +5,7 @@
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
+from config import LLM_MODEL
 
 from tools.drive_client import download_file_bytes
 from tools.gemini_vision import identify_lecturer_and_course
@@ -46,7 +47,7 @@ def create_identifier_agent() -> LlmAgent:
     """
     return LlmAgent(
         name="identifier_agent",
-        model="gemini-2.0-flash",
+        model=LLM_MODEL,
         description=(
             "You identify which exam files in a Drive folder belong to a "
             "specific lecturer, by inspecting the content of each PDF."

@@ -8,6 +8,7 @@ import os
 import json
 from google import genai
 from google.genai import types
+from config import VISION_MODEL
 
 _client = None
 
@@ -29,7 +30,7 @@ def identify_lecturer_and_course(pdf_bytes: bytes) -> dict:
     """
     client = _get_client()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=VISION_MODEL,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             "Look at this exam document (it may be typed or scanned/handwritten). "
@@ -50,7 +51,7 @@ def extract_exam_structure(pdf_bytes: bytes) -> dict:
     """
     client = _get_client()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=VISION_MODEL,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             "Analyze this exam paper in full. For EACH question, identify: "

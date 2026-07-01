@@ -5,6 +5,7 @@
 # actionable study recommendations for the student.
 
 from google.adk.agents import LlmAgent
+from config import LLM_MODEL
 
 
 def create_pattern_synthesizer_agent() -> LlmAgent:
@@ -17,7 +18,7 @@ def create_pattern_synthesizer_agent() -> LlmAgent:
     """
     return LlmAgent(
         name="pattern_synthesizer_agent",
-        model="gemini-2.0-flash",
+        model=LLM_MODEL,
         description=(
             "You are an expert exam-pattern analyst. You study multiple "
             "past exams from the same lecturer and identify recurring "

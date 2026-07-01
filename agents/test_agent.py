@@ -6,6 +6,7 @@
 from pydantic import BaseModel, Field
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
+from config import LLM_MODEL
 
 from tools.report_verifier import verify_report_integrity
 
@@ -33,7 +34,7 @@ def create_test_agent() -> LlmAgent:
     """
     return LlmAgent(
         name="test_agent",
-        model="gemini-2.0-flash",
+        model=LLM_MODEL,
         description=(
             "You are a Quality Assurance and Test Agent. Your job is to verify the "
             "synthesized study report for correctness, completeness, and formatting, "
@@ -64,6 +65,5 @@ def create_test_agent() -> LlmAgent:
         Do not include any explanation text outside the JSON.
         """,
         tools=[FunctionTool(verify_report_integrity)],
-        output_schema=ValidationReportSchema,
         output_key="validated_report",
     )

@@ -41,10 +41,18 @@ def test_pipeline_sequential_execution(mock_llm_flow_prop, mock_new_llm):
 
     # Define an async side effect for running the flow
     async def mock_run_async(ctx):
-        # Pop the first response
         if responses:
             resp = responses.pop(0)
-            yield MagicMock(is_final_response=lambda: True, content=resp.content)
+            import json
+            class MockEventDict(dict):
+                def __getattr__(self, name):
+                    return MagicMock()
+
+            data = json.loads(resp.content.parts[0].text)
+            out = MockEventDict(data)
+            # Make sure get_function_calls is callable and returns empty to avoid issues
+            out.get_function_calls = lambda: []
+            yield out
 
     # Mock the LLM flow property run_async
     mock_flow = MagicMock()
@@ -74,6 +82,10 @@ def test_pipeline_sequential_execution(mock_llm_flow_prop, mock_new_llm):
     assert len(final_responses) > 0
 
     # The last response from test_agent
-    last_text = final_responses[-1].content.parts[0].text
-    parsed = json.loads(last_text)
+    last_response = final_responses[-1]
+    if getattr(last_response, "output", None) is not None:
+        parsed = last_response.output
+    else:
+        last_text = last_response.content.parts[0].text
+        parsed = json.loads(last_text)
     assert parsed["status"] == "success"

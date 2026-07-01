@@ -4,6 +4,7 @@
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
+from config import LLM_MODEL
 
 from tools.drive_client import download_file_bytes
 from tools.gemini_vision import extract_exam_structure
@@ -35,7 +36,7 @@ def create_exam_analyzer_agent() -> LlmAgent:
     """
     return LlmAgent(
         name="exam_analyzer_agent",
-        model="gemini-2.0-flash",
+        model=LLM_MODEL,
         description=(
             "You extract the detailed structure (questions, topics, types) "
             "of each matched exam PDF."
