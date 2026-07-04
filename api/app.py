@@ -23,7 +23,9 @@ app.add_middleware(
 @app.get("/api/analyze/stream")
 async def stream_endpoint(
     drive_folder_url: str = Query(..., description="The public Google Drive folder URL"),
-    lecturer_name: str = Query(..., description="The lecturer's name")
+    lecturer_name: str = Query(..., description="The lecturer's name"),
+    course_name: str = Query(..., description="The course's name"),
+    syllabus: str = Query(..., description="The course's syllabus")
 ):
     # Generate a unique session ID per request to prevent state collisions
     session_id = str(uuid.uuid4())
@@ -33,6 +35,8 @@ async def stream_endpoint(
             async for update in run_analysis_stream(
                 drive_folder_url=drive_folder_url,
                 lecturer_name=lecturer_name,
+                course_name=course_name,
+                syllabus=syllabus,
                 session_id=session_id
             ):
                 # Standard Server-Sent Events (SSE) formatting
@@ -40,8 +44,7 @@ async def stream_endpoint(
                 # Small sleep to ensure chunks flush cleanly to the client
                 await asyncio.sleep(0.01)
         except Exception as e:
-            error_msg = {"event": "error", "data": f"Server error: {str(e)}"}
-            yield f"event: error\ndata: {json.dumps(error_msg)}\n\n"
+            yield f"event: error\ndata: {json.dumps(f'Server error: {str(e)}')}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

@@ -13,7 +13,11 @@
 import os
 import json
 import asyncio
+import logging
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 from google.adk.workflow import Workflow
 from google.adk.runners import Runner
@@ -76,11 +80,11 @@ def skip_if_unsafe_callback(callback_context, llm_request) -> LlmResponse | None
     return None
 
 
-def build_pipeline() -> Workflow:
-    """Builds the 5-agent sequential pipeline. Each agent reads/writes shared session state."""
+def build_pipeline(candidate_files: list[dict] = None, target_lecturer: str = "Unknown", course_name: str = "Unknown", syllabus: str = "Unknown") -> Workflow:
+    """Builds the 4-agent sequential pipeline. Each agent reads/writes shared session state."""
     security_agent = create_security_agent()
 
-    identifier_agent = create_identifier_agent()
+    identifier_agent = create_identifier_agent(candidate_files, target_lecturer)
     identifier_agent.before_model_callback = skip_if_unsafe_callback
 
     exam_analyzer_agent = create_exam_analyzer_agent()
@@ -105,23 +109,31 @@ def build_pipeline() -> Workflow:
     )
 
 
-async def run_analysis_stream(drive_folder_url: str, lecturer_name: str, session_id: str):
+async def run_analysis_stream(drive_folder_url: str, lecturer_name: str, course_name: str, syllabus: str, session_id: str):
     """
     Asynchronous and streaming entry point. Validates inputs, scans Drive,
     and yields status updates and pipeline events as they occur.
     """
     # 1. Validation
     try:
-        request = AnalysisRequest(drive_folder_url=drive_folder_url, lecturer_name=lecturer_name)
+        request = AnalysisRequest(
+            drive_folder_url=drive_folder_url,
+            lecturer_name=lecturer_name,
+            course_name=course_name,
+            syllabus=syllabus
+        )
     except ValueError as e:
         yield {"event": "error", "data": f"Invalid input: {str(e)}"}
         return
 
     # 2. Drive Scan (Run in threadpool to avoid blocking the ASGI event loop)
     yield {"event": "status", "data": "Scanning Google Drive folder..."}
+    logger.info(f"Scanning Drive folder: {request.drive_folder_url}")
     try:
         candidate_files = await run_in_threadpool(find_pdfs_dfs, request.drive_folder_url)
+        logger.info(f"Found {len(candidate_files)} candidate PDFs.")
     except Exception as e:
+        logger.error(f"Failed to list Drive files: {str(e)}")
         yield {"event": "error", "data": f"Failed to list Drive files: {str(e)}"}
         return
 
@@ -137,31 +149,78 @@ async def run_analysis_stream(drive_folder_url: str, lecturer_name: str, session
         app_name="exam_analyzer", user_id="student", session_id=session_id
     )
 
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(candidate_files, request.lecturer_name, request.course_name, request.syllabus)
     runner = Runner(agent=pipeline, app_name="exam_analyzer", session_service=session_service)
 
     prompt = f"""
     Target lecturer: {request.lecturer_name}
-
-    Candidate exam files in the folder: {json.dumps(candidate_files)}
+    Course name: {request.course_name}
+    Syllabus: {request.syllabus}
     """
 
     # 4. Stream events using run_async
-    async for event in runner.run_async(
-        user_id="student",
-        session_id=session_id,
-        new_message=genai_types.Content(
-            role="user", parts=[genai_types.Part(text=prompt)]
-        ),
-    ):
-        if event.is_final_response():
-            # This is the final output from the Test Agent
-            final_text = event.content.parts[0].text
-            try:
-                yield {"event": "result", "data": json.loads(final_text)}
-            except json.JSONDecodeError:
-                yield {"event": "result", "data": {"raw_output": final_text}}
-        else:
-            # Emit intermediate progress
-            agent_name = getattr(event, "agent_name", "pipeline")
-            yield {"event": "progress", "data": f"{agent_name.replace('_', ' ').title()} is processing..."}
+    last_result_event = None
+
+    try:
+        async for event in runner.run_async(
+            user_id="student",
+            session_id=session_id,
+            new_message=genai_types.Content(
+                role="user", parts=[genai_types.Part(text=prompt)]
+            ),
+        ):
+            if event.is_final_response():
+                last_result_event = event
+            else:
+                # Emit detailed intermediate progress from tool calls
+                try:
+                    calls = event.get_function_calls()
+                    if calls:
+                        for call in calls:
+                            fn_name = call.name
+                            logger.info(f"Agent tool call: {fn_name}")
+                            if fn_name == "check_all_files":
+                                yield {"event": "progress", "data": "Identifying candidate files..."}
+                            elif fn_name == "analyze_all_exams":
+                                yield {"event": "progress", "data": "Extracting structures from matched exams..."}
+                            elif fn_name == "verify_report_integrity":
+                                yield {"event": "progress", "data": "Validating final report format..."}
+                except Exception as e:
+                    logger.error(f"Error parsing function calls: {e}")
+                    pass
+    except Exception as e:
+        logger.error(f"Pipeline crashed with error: {str(e)}", exc_info=True)
+        yield {"event": "error", "data": f"Pipeline crashed: {str(e)}"}
+        return
+
+    # Yield the final result after the pipeline fully completes
+    if last_result_event and getattr(last_result_event, 'content', None) and last_result_event.content.parts:
+        logger.info("Pipeline completed successfully. Yielding final report.")
+        final_text = getattr(last_result_event.content.parts[0], 'text', '{}')
+        if final_text is None:
+            final_text = '{}'
+
+        # Clean markdown code blocks
+        clean_text = final_text.strip()
+        if clean_text.startswith("```json"):
+            clean_text = clean_text[7:]
+        elif clean_text.startswith("```"):
+            clean_text = clean_text[3:]
+        if clean_text.endswith("```"):
+            clean_text = clean_text[:-3]
+        clean_text = clean_text.strip()
+
+        try:
+            parsed = json.loads(clean_text)
+            if isinstance(parsed, dict):
+                # Unwrap ADK's output_key if present
+                if "validated_report" in parsed:
+                    parsed = parsed["validated_report"]
+                elif "final_report" in parsed and "status" not in parsed:
+                    # In case it wrapped it in final_report directly
+                    parsed = parsed["final_report"]
+
+            yield {"event": "result", "data": parsed}
+        except Exception as e:
+            logger.error(f"Error parsing final result: {e}")
+            yield {"event": "result", "data": {"raw_output": final_text}}

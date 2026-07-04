@@ -15,7 +15,7 @@ def test_security_agent_creation():
 
 
 def test_identifier_agent_creation():
-    agent = create_identifier_agent()
+    agent = create_identifier_agent([], "Test Lecturer")
     assert isinstance(agent, LlmAgent)
     assert agent.name == "identifier_agent"
     assert agent.output_key == "matched_exams"

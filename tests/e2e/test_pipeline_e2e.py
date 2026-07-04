@@ -16,11 +16,11 @@ def test_pipeline_sequential_execution(mock_llm_flow_prop, mock_new_llm):
     mock_new_llm.return_value = mock_model
 
     # We mock model responses for the pipeline agents:
-    # 1. security_agent response: {"is_safe": true}
-    # 2. identifier_agent response: {"matched_exams": [{"file_id": "f1", "file_name": "Exam.pdf"}]}
-    # 3. exam_analyzer_agent response: {"exams": [{"file_name": "Exam.pdf", "total_questions": 1, "questions": []}]}
-    # 4. pattern_synthesizer_agent response: {"topic_frequency": [], "question_type_distribution": {}, "lecturer_style_summary": [], "study_recommendations": []}
-    # 5. test_agent response: {"status": "success", "validation_details": {"schema_check": "passed", "consistency_check": "passed", "warnings": []}, "final_report": {}}
+    # 1. security_agent response
+    # 2. identifier_agent response
+    # 3. exam_analyzer_agent response
+    # 4. pattern_synthesizer_agent response
+    # 5. test_agent response
 
     # Mock responses list
     from google.adk.models.llm_response import LlmResponse
@@ -30,13 +30,13 @@ def test_pipeline_sequential_execution(mock_llm_flow_prop, mock_new_llm):
         # Security Agent
         LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"is_safe": true, "reason": null}')])),
         # Identifier Agent
-        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"matched_exams": [{"file_id": "f1", "file_name": "Exam.pdf", "course_name": "Calculus"}]}')])),
+        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"matched_exams": [{"file_id": "f1", "file_name": "Exam.pdf", "course_name": "Course"}]}')])),
         # Exam Analyzer Agent
-        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"exams": [{"file_name": "Exam.pdf", "total_questions": 1, "questions": []}]}')])),
+        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"exams": [{"file_name": "Exam.pdf", "document_type": "exam", "total_questions": 1, "questions": []}], "student_solutions": []}')])),
         # Pattern Synthesizer Agent
-        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"topic_frequency": [], "question_type_distribution": {}, "lecturer_style_summary": [], "study_recommendations": []}')])),
+        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"summary": "Test summary", "exams": [], "student_solutions": []}')])),
         # Test Agent
-        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"status": "success", "validation_details": {"schema_check": "passed", "consistency_check": "passed", "warnings": []}, "final_report": {}}')]))
+        LlmResponse(content=genai_types.Content(role='model', parts=[genai_types.Part(text='{"status": "success", "validation_details": {"schema_check": "passed", "consistency_check": "passed", "warnings": []}, "final_report": {"summary": "Test summary", "exams": [], "student_solutions": []}}')]))
     ]
 
     # Define an async side effect for running the flow

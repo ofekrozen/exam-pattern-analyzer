@@ -35,7 +35,7 @@ def _list_pdfs_in_folder(folder_id: str, api_key: str) -> list[dict]:
         params={
             "q": query,
             "key": api_key,
-            "fields": "files(id,name,size)",
+            "fields": "files(id,name,size,parents)",
             "pageSize": MAX_FILES_TO_SCAN,
         },
         timeout=20,
@@ -47,7 +47,11 @@ def _list_pdfs_in_folder(folder_id: str, api_key: str) -> list[dict]:
             "are not supported by this API-key-only approach."
         )
     resp.raise_for_status()
-    return resp.json().get("files", [])
+    files = resp.json().get("files", [])
+    for f in files:
+        parents = f.get("parents", [])
+        f["parent_id"] = parents[0] if parents else folder_id
+    return files
 
 
 def _list_subfolders(folder_id: str, api_key: str) -> list[dict]:

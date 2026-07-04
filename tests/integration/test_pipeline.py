@@ -4,11 +4,11 @@ from unittest.mock import patch, MagicMock
 from main import run_analysis_stream, build_pipeline
 
 
-def run_analysis_sync(drive_folder_url, lecturer_name):
+def run_analysis_sync(drive_folder_url, lecturer_name, course_name="Calculus", syllabus="Derivatives"):
     """Helper to run the async generator in synchronous tests."""
     async def collect():
         results = []
-        async for event in run_analysis_stream(drive_folder_url, lecturer_name, "test_session"):
+        async for event in run_analysis_stream(drive_folder_url, lecturer_name, course_name, syllabus, "test_session"):
             results.append(event)
         return results
     return asyncio.run(collect())
@@ -28,6 +28,7 @@ def test_run_analysis_success(mock_runner_cls, mock_find_pdfs_dfs):
 
     mock_event = MagicMock()
     mock_event.is_final_response.return_value = True
+    mock_event.agent_name = "test_agent"
 
     # Dummy final response from test_agent (including validation_details and final_report)
     mock_response_json = {

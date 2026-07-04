@@ -3,11 +3,15 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
 
     const driveUrl = document.getElementById('driveUrl').value;
     const lecturerName = document.getElementById('lecturerName').value;
+    const courseName = document.getElementById('courseName').value;
+    const syllabus = document.getElementById('syllabus').value;
+
     const submitBtn = document.getElementById('submitBtn');
     const terminalSection = document.getElementById('terminal-section');
     const terminalOutput = document.getElementById('terminal-output');
     const resultsSection = document.getElementById('results-section');
-    const resultsGrid = document.getElementById('results-grid');
+    const topNav = document.getElementById('top-nav');
+    const resultsContent = document.getElementById('results-content');
 
     // Reset UI
     submitBtn.disabled = true;
@@ -15,7 +19,8 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
     terminalSection.classList.remove('hidden');
     resultsSection.classList.add('hidden');
     terminalOutput.innerHTML = '';
-    resultsGrid.innerHTML = '';
+    topNav.innerHTML = '';
+    resultsContent.innerHTML = '';
 
     const addLog = (msg, isError = false) => {
         const div = document.createElement('div');
@@ -26,10 +31,7 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
     };
 
     try {
-        // We will fetch from the API endpoint
-        // To handle CORS during development, the user might run frontend separately or combined
-        // Using relative or absolute path based on setup. Assuming backend is on port 8000
-        const apiUrl = `http://localhost:8000/api/analyze/stream?drive_folder_url=${encodeURIComponent(driveUrl)}&lecturer_name=${encodeURIComponent(lecturerName)}`;
+        const apiUrl = `http://localhost:8000/api/analyze/stream?drive_folder_url=${encodeURIComponent(driveUrl)}&lecturer_name=${encodeURIComponent(lecturerName)}&course_name=${encodeURIComponent(courseName)}&syllabus=${encodeURIComponent(syllabus)}`;
 
         const response = await fetch(apiUrl, {
             method: 'GET',
@@ -52,14 +54,12 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
 
             buffer += decoder.decode(value, { stream: true });
 
-            // Process complete events separated by \n\n
             const events = buffer.split('\n\n');
-            buffer = events.pop(); // Keep the incomplete part
+            buffer = events.pop();
 
             for (const eventString of events) {
                 if (!eventString.trim()) continue;
 
-                // Parse SSE format
                 const lines = eventString.split('\n');
                 let eventType = 'message';
                 let eventData = '';
@@ -81,9 +81,9 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
                     }
 
                     if (eventType === 'status' || eventType === 'progress') {
-                        addLog(parsedData);
+                        addLog(typeof parsedData === 'object' ? (parsedData.message || parsedData.data || JSON.stringify(parsedData)) : parsedData);
                     } else if (eventType === 'error') {
-                        addLog(parsedData, true);
+                        addLog(typeof parsedData === 'object' ? (parsedData.error || parsedData.data || JSON.stringify(parsedData)) : parsedData, true);
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Start Analysis';
                     } else if (eventType === 'result') {
@@ -100,69 +100,86 @@ document.getElementById('analyze-form').addEventListener('submit', async (e) => 
     }
 });
 
+let currentReportData = null;
+
 function renderResults(data) {
     const resultsSection = document.getElementById('results-section');
-    const resultsGrid = document.getElementById('results-grid');
+    const topNav = document.getElementById('top-nav');
+    const resultsContent = document.getElementById('results-content');
     const submitBtn = document.getElementById('submitBtn');
 
-    // Extract inner data if nested
-    const finalReport = data.final_report || data;
+    currentReportData = data.final_report || data;
 
     submitBtn.disabled = false;
     submitBtn.textContent = 'Start Analysis';
     resultsSection.classList.remove('hidden');
 
+    if (currentReportData.raw_output) {
+        resultsContent.innerHTML = `<div class="result-card">
+            <h3>Raw Output</h3>
+            <pre style="white-space: pre-wrap; font-size: 0.8rem; overflow-x: auto;">${currentReportData.raw_output}</pre>
+        </div>`;
+        return;
+    }
+
+    // Build Navigation
+    let navHtml = `<button class="nav-btn active" onclick="showTab('summary', this)">Summary</button>`;
+
+    if (currentReportData.exams && Array.isArray(currentReportData.exams)) {
+        currentReportData.exams.forEach((exam, index) => {
+            const name = exam.file_name || exam.exam_name || `Exam ${index + 1}`;
+            navHtml += `<button class="nav-btn" onclick="showTab('exam-${index}', this)">${name}</button>`;
+        });
+    }
+
+    topNav.innerHTML = navHtml;
+
+    // Render Summary by default
+    showTab('summary', topNav.firstElementChild);
+}
+
+function showTab(tabId, btnElement) {
+    const topNav = document.getElementById('top-nav');
+    const resultsContent = document.getElementById('results-content');
+
+    // Update active button state
+    Array.from(topNav.children).forEach(btn => btn.classList.remove('active'));
+    if (btnElement) btnElement.classList.add('active');
+
     let html = '';
 
-    // Topics
-    if (finalReport.topic_frequency && finalReport.topic_frequency.length > 0) {
-        html += `<div class="result-card">
-            <h3>Frequent Topics</h3>
-            <div class="badge-container">
-                ${finalReport.topic_frequency.map(t => `<span class="badge">${t.topic} (${t.frequency})</span>`).join('')}
-            </div>
+    if (tabId === 'summary') {
+        const summaryText = currentReportData.summary || "No summary available.";
+        html = `<div class="result-card">
+            <h3>Professor's Style & Study Report</h3>
+            <div style="white-space: pre-wrap; line-height: 1.6;">${summaryText}</div>
         </div>`;
+    } else if (tabId.startsWith('exam-')) {
+        const index = parseInt(tabId.split('-')[1]);
+        const exam = currentReportData.exams[index];
+        const name = exam.file_name || exam.exam_name || `Exam ${index + 1}`;
+
+        html = `<div class="result-card">
+            <h3>${name}</h3>`;
+
+        if (exam.questions && exam.questions.length > 0) {
+            exam.questions.forEach(q => {
+                const tagsHtml = q.tags ? q.tags.map(t => `<span class="badge">${t}</span>`).join('') : '';
+                html += `
+                <div class="question-card">
+                    <div class="question-header">
+                        <h4>Question ${q.q_number}</h4>
+                        ${q.type ? `<span style="font-size: 0.8rem; color: #94a3b8;">${q.type.replace('_', ' ')}</span>` : ''}
+                    </div>
+                    <div class="question-body">${q.q_content || "No content extracted."}</div>
+                    <div class="badge-container" style="margin-top: 0.5rem;">${tagsHtml}</div>
+                </div>`;
+            });
+        } else {
+            html += `<p>No questions extracted for this exam.</p>`;
+        }
+        html += `</div>`;
     }
 
-    // Recommendations
-    if (finalReport.study_recommendations && finalReport.study_recommendations.length > 0) {
-        html += `<div class="result-card">
-            <h3>Study Recommendations</h3>
-            <ul class="recommendations">
-                ${finalReport.study_recommendations.map(r => `<li>${r}</li>`).join('')}
-            </ul>
-        </div>`;
-    }
-
-    // Lecturer Style
-    if (finalReport.lecturer_style_summary && finalReport.lecturer_style_summary.length > 0) {
-        html += `<div class="result-card">
-            <h3>Lecturer Style</h3>
-            <ul class="recommendations">
-                ${finalReport.lecturer_style_summary.map(s => `<li>${s}</li>`).join('')}
-            </ul>
-        </div>`;
-    }
-
-    // Question Types
-    if (finalReport.question_type_distribution) {
-        html += `<div class="result-card">
-            <h3>Question Distribution</h3>
-            <div class="badge-container">
-                ${Object.entries(finalReport.question_type_distribution).map(([type, pct]) =>
-                    `<span class="badge">${type.replace('_', ' ')}: ${pct}</span>`
-                ).join('')}
-            </div>
-        </div>`;
-    }
-
-    // If we have raw output instead
-    if (data.raw_output) {
-        html += `<div class="result-card">
-            <h3>Raw Output</h3>
-            <pre style="white-space: pre-wrap; font-size: 0.8rem; overflow-x: auto;">${data.raw_output}</pre>
-        </div>`;
-    }
-
-    resultsGrid.innerHTML = html || '<div class="result-card"><p>No structured data found in the response.</p></div>';
+    resultsContent.innerHTML = html;
 }

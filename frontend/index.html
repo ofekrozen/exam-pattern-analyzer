@@ -25,6 +25,14 @@
                         <label for="lecturerName">Lecturer Name</label>
                         <input type="text" id="lecturerName" placeholder="e.g. Dr. Smith" required>
                     </div>
+                    <div class="form-group">
+                        <label for="courseName">Course Name</label>
+                        <input type="text" id="courseName" placeholder="e.g. Introduction to Physics" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="syllabus">Course Syllabus (Max 120 chars)</label>
+                        <textarea id="syllabus" placeholder="Brief topics, e.g., Mechanics, Thermodynamics..." rows="2" maxlength="120" required></textarea>
+                    </div>
                     <button type="submit" id="submitBtn">Start Analysis</button>
                 </form>
             </section>
@@ -41,7 +49,12 @@
 
             <section class="results hidden" id="results-section">
                 <h2 class="gradient-text">Analysis Results</h2>
-                <div class="results-grid" id="results-grid">
+
+                <div class="top-nav" id="top-nav">
+                    <!-- Navigation buttons injected here -->
+                </div>
+
+                <div class="results-content glass-panel" id="results-content">
                     <!-- Dynamic content will be injected here -->
                 </div>
             </section>

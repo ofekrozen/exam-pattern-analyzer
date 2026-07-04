@@ -9,7 +9,7 @@ from google.adk.tools import FunctionTool
 from config import LLM_MODEL
 
 from tools.report_verifier import verify_report_integrity
-
+from agents.schemas import FinalReport
 
 class ValidationDetails(BaseModel):
     """Details of the validation check performed on the report."""
@@ -22,7 +22,7 @@ class ValidationReportSchema(BaseModel):
     """The final structured output returned by the Test Agent."""
     status: str = Field(description="Either 'success' or 'failed'")
     validation_details: ValidationDetails
-    final_report: dict = Field(description="The final, verified, and corrected study pattern report.")
+    final_report: FinalReport = Field(description="The final, verified, and corrected study pattern report.")
 
 
 def create_test_agent() -> LlmAgent:
@@ -51,19 +51,10 @@ def create_test_agent() -> LlmAgent:
 
         If you correct the report, run the tool on the corrected version to verify. If it passes, set status to 'success' and 'warnings' to include details of the corrections made. If it still fails and cannot be fixed, set status to 'failed'.
 
-        Output ONLY a JSON matching the output schema:
-        {
-          "status": "success" | "failed",
-          "validation_details": {
-             "schema_check": "passed" | "failed",
-             "consistency_check": "passed" | "failed",
-             "warnings": [...]
-          },
-          "final_report": { ... }
-        }
-
+        Output ONLY a valid JSON matching the requested schema.
         Do not include any explanation text outside the JSON.
         """,
         tools=[FunctionTool(verify_report_integrity)],
+        output_schema=ValidationReportSchema,
         output_key="validated_report",
     )

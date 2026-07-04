@@ -25,45 +25,48 @@ def _get_client() -> genai.Client:
 
 def identify_lecturer_and_course(pdf_bytes: bytes) -> dict:
     """
-    Sends a PDF (typed or scanned) to Gemini and asks it to identify
-    the lecturer's name and the course name, usually found in the header.
+    Sends a PDF to Gemini to evaluate the document and extract the lecturer's name.
     """
     client = _get_client()
     response = client.models.generate_content(
         model=VISION_MODEL,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
-            "Look at this exam document (it may be typed or scanned/handwritten). "
-            "Identify the lecturer's name and the course name, usually found on "
-            "the first page or in the header. Respond ONLY with JSON: "
-            '{"lecturer_name": "...", "course_name": "..."}. '
-            "If you cannot find a field, use null for that field.",
+            "Look at this document (it may be typed or scanned/handwritten). "
+            "Extract the lecturer's name and the course name, usually found in the header or first page. "
+            "IMPORTANT: Extract the names EXACTLY in the original language of the document. "
+            "Respond ONLY with JSON using this structure: "
+            '{"lecturer_name": "...", "course_name": "..."}'
         ],
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
     return json.loads(response.text)
 
 
-def extract_exam_structure(pdf_bytes: bytes) -> dict:
+def extract_exam_structure(pdf_bytes: bytes, course_name: str, syllabus: str) -> dict:
     """
-    Sends a full exam PDF to Gemini and asks for a structured, per-question
-    breakdown: topic, question type, points, and a note on phrasing style.
+    Extracts the full question structure or student solutions from a PDF.
     """
     client = _get_client()
     response = client.models.generate_content(
         model=VISION_MODEL,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
-            "Analyze this exam paper in full. For EACH question, identify: "
-            "the question number, the topic/subtopic it covers, the question "
-            "type (multiple_choice / open_ended / calculation / proof / "
-            "short_answer), the point value if stated, and a one-line note "
-            "on its phrasing style (e.g. 'derive from first principles', "
-            "'application-based word problem'). "
-            "Respond ONLY with JSON in this exact format: "
-            '{"total_questions": N, "questions": ['
-            '{"number": 1, "topic": "...", "type": "...", '
-            '"points": null, "style_note": "..."}]}',
+            f"Identify the document type: 'exam' (a blank test) or 'student_solution' (a filled-in test with grades/comments) or 'unknown'. "
+            f"The course is '{course_name}' and the syllabus is: '{syllabus}'. "
+            "If document type is 'exam': "
+            "For EACH question, identify: the question number, "
+            "and classify the question with 1-3 tags based on the topics mentioned in the syllabus. "
+            "Also include the question type (multiple_choice / open_ended / calculation / proof / short_answer). "
+            "If document type is 'student_solution': "
+            "Identify the student's mistakes, and what the lecturer lowered the score on. "
+            "Respond ONLY with JSON. Ensure the JSON is properly formatted. "
+            "Use this structure if the document is an exam (blank test): "
+            '{"document_type": "exam", "total_questions": N, "questions": [{"q_number": 1, "tags": ["..."], "type": "..."}]} '
+            "Use this structure if the document is a student_solution (filled-in test with grades): "
+            '{"document_type": "student_solution", "score_deductions": [{"q_number": 1, "mistake": "...", "deduction_reason": "..."}]} '
+            "Use this structure if unknown: "
+            '{"document_type": "unknown"}'
         ],
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )

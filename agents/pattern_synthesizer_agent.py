@@ -9,6 +9,7 @@ from config import LLM_MODEL
 
 
 def create_pattern_synthesizer_agent() -> LlmAgent:
+    from agents.schemas import FinalReport
     """
     Creates the Pattern Synthesizer Agent.
 
@@ -21,33 +22,23 @@ def create_pattern_synthesizer_agent() -> LlmAgent:
         model=LLM_MODEL,
         description=(
             "You are an expert exam-pattern analyst. You study multiple "
-            "past exams from the same lecturer and identify recurring "
-            "patterns in topics, question types, and phrasing style, then "
+            "past exams and student solutions from the same lecturer and identify recurring "
+            "patterns in topics, question types, phrasing style, and common mistakes, then "
             "translate that into actionable study recommendations."
         ),
         instruction="""
         You will receive 'exam_analyses' from session state — structured
-        breakdowns of multiple past exams from the same lecturer.
+        breakdowns of multiple past exams and student solutions from the same lecturer.
 
         Produce a final report covering:
 
-        1. "topic_frequency": which topics appear most often across exams,
-           ranked by frequency (tells the student what to prioritize).
-        2. "question_type_distribution": breakdown of multiple_choice vs.
-           open_ended vs. calculation etc., across all analyzed exams.
-        3. "lecturer_style_summary": 3-5 bullet observations about how
-           this lecturer phrases questions (e.g. "prefers application word
-           problems over pure theory", "always includes one proof
-           question", "rarely repeats exact past questions but reuses
-           topics").
-        4. "study_recommendations": 5-8 concrete, actionable study tips
-           directly derived from the patterns above (e.g. "Practice at
-           least 3 calculation problems on [topic X] — it appeared in 4/5
-           exams").
+        1. A comprehensive "summary" string. This should be a detailed report on what the
+           professor likes to ask in their exams and in what form, AND what mistakes students commonly make based on the score deductions. You MUST cite the specific source (file name/tab and question number) for insights derived from score deductions.
+        2. "exams": A list of the exams analyzed, preserving the per-question breakdown.
+        3. "student_solutions": A list of the solutions analyzed and their score deductions.
 
-        Be specific — reference the actual topics and patterns you found
-        in the data, not generic study advice. Output as clean JSON only,
-        no explanation text outside it.
+        Output ONLY a valid JSON matching the requested schema, with no explanation text outside it.
         """,
+        output_schema=FinalReport,
         output_key="final_report",
     )
