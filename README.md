@@ -14,7 +14,7 @@ from generic review.
 
 ## 💡 The Solution
 
-Given a public Google Drive folder link and a lecturer's name, the system:
+Given a public Google Drive folder link, a lecturer's name, a course name, and a syllabus, the system:
 
 1. Scans the folder for PDF exam files
 2. Identifies (from the document **content**, not the filename) which
@@ -22,18 +22,24 @@ Given a public Google Drive folder link and a lecturer's name, the system:
    typed, scanned, or inconsistently named
 3. Extracts a full per-question breakdown of each matched exam
 4. Synthesizes patterns across all exams into a concrete study report
+5. Validates the output format and structural integrity of the final study recommendations
 
 ## 🏗️ Architecture
 
-```
-User Input (Drive link + lecturer name)
+The system uses a 5-step sequential agent pipeline orchestrated via the Google Agent Development Kit (ADK), alongside a FastAPI streaming backend.
+
+```text
+User Input (Drive link + lecturer name + course name + syllabus)
         │
         ▼
-   [Validator]  ← Security layer: sanitizes input, caps file count
+   [Validator]  ← Pydantic sanitization layer
         │
         ▼
 [List PDF Files]  ← Plain Drive API call (no LLM needed)
         │
+        ▼
+[Security Agent] ──▶ LLM reasoning check for prompt injections/jailbreaks
+        │ session state: security_status
         ▼
 [Identifier Agent] ──uses──▶ check_lecturer_match tool
         │                     (downloads PDF, asks Gemini who the
@@ -48,8 +54,12 @@ User Input (Drive link + lecturer name)
 [Pattern Synthesizer Agent]  ← pure reasoning, no tools
         │                       (finds recurring topics, lecturer's
         │                        question style, study tips)
+        │ session state: raw_report
         ▼
-   Final Study Report (JSON)
+[Test Agent]  ← pure reasoning, no tools
+        │                       (validates format and guarantees schema compliance)
+        ▼
+   Final Study Report (JSON) streamed via Server-Sent Events (SSE)
 ```
 
 A standalone **MCP server** (`mcp_server/server.py`) also exposes the
@@ -58,16 +68,13 @@ specific pipeline.
 
 ## 🔑 Key Concepts Demonstrated
 
-- ✅ **Multi-Agent System (ADK)** — `SequentialAgent` with 3 specialized
-  sub-agents, chained via shared session state (`output_key`)
-- ✅ **MCP Server** — exposes Drive folder scanning as a standard tool
-- ✅ **Security Features** — Pydantic input validation, prompt-injection
-  guardrails on free-text fields, API-key-only access (no broad OAuth
-  scopes), and a hard cap on files scanned per request
-- ✅ **Agent Skills** — each agent has a narrow, well-defined
-  responsibility with tools scoped specifically to that job
-- ✅ **Multimodal understanding** — Gemini reads both typed and
-  scanned/handwritten PDFs natively, no separate OCR pipeline
+- ✅ **Multi-Agent System (ADK)** — `SequentialAgent` with 5 specialized
+  sub-agents, chained via shared session state.
+- ✅ **Real-Time Streaming** — A FastAPI backend pushes pipeline progress, tool calls, and status updates via SSE to a vanilla JS frontend.
+- ✅ **MCP Server** — exposes Drive folder scanning as a standard tool.
+- ✅ **Security Features** — Double-layered validation (Pydantic + Behavioral LLM Security Agent), prompt-injection guardrails, API-key-only access, and file scanning caps.
+- ✅ **Agent Skills** — each agent has a narrow, well-defined responsibility.
+- ✅ **Multimodal understanding** — Gemini reads both typed and scanned/handwritten PDFs natively, no separate OCR pipeline.
 
 ## ⚙️ Setup
 
@@ -100,25 +107,17 @@ cp .env.example .env
 ```
 
 ### 6. Share the target Drive folder publicly
-The folder must be shared as **"Anyone with the link can view"**. This
-keeps the security model simple (no OAuth, no stored user credentials) —
-intentionally, the system never requests access to private files.
+The folder must be shared as **"Anyone with the link can view"**.
 
-### 7. Run it
-```python
-from main import run_analysis
+### 7. Run the Web Interface
+The recommended way to run the application is through the FastAPI web server, which provides a rich frontend UI.
 
-result = run_analysis(
-    drive_folder_url="https://drive.google.com/drive/folders/YOUR_FOLDER_ID",
-    lecturer_name="Dr. Cohen",
-)
-print(result)
-```
-
-Or simply edit the example at the bottom of `main.py` and run:
 ```bash
-python main.py
+uvicorn api.app:app --reload
 ```
+Then navigate to `http://localhost:8000` in your browser.
+
+*(You can still run the pipeline programmatically or interactively via `python main.py`)*
 
 ## 📤 Output Format
 
@@ -133,37 +132,38 @@ python main.py
 
 ## 🔒 Security Notes
 
-- All user input (Drive URL, lecturer name) is validated and sanitized
-  before reaching any agent or API call
-- The lecturer-name field is checked against prompt-injection patterns
-- Access is API-key-only and read-only — no OAuth, no write access, no
-  access to private folders
-- File scanning is capped (`MAX_FILES_TO_SCAN`) to bound cost and prevent
-  abuse via oversized folders
-- API keys are never hardcoded — loaded from environment variables only
+- All user input is validated and sanitized deterministically and behaviorally.
+- A dedicated **Security Agent** enforces STRIDE alignment.
+- The `skip_if_unsafe_callback` ensures no tools execute if threats are detected.
+- Access is API-key-only and read-only — no OAuth, no write access, no access to private folders.
 
 ## 📁 Project Structure
 
-```
+```text
 exam-pattern-analyzer/
-├── main.py                       # Entry point and orchestrator
-├── requirements.txt
-├── .env.example
+├── main.py                       # Orchestrator and core pipeline logic
+├── api/
+│   └── app.py                    # FastAPI server & SSE streaming endpoints
+├── frontend/
+│   ├── index.html                # Web UI
+│   ├── style.css
+│   └── app.js
 ├── agents/
-│   ├── identifier_agent.py       # Matches PDFs to the target lecturer
+│   ├── identifier_agent.py       # Matches PDFs to target lecturer
 │   ├── exam_analyzer_agent.py    # Extracts per-question structure
-│   └── pattern_synthesizer_agent.py  # Produces the final study report
+│   ├── pattern_synthesizer_agent.py # Synthesizes study report
+│   └── test_agent.py             # QA and schema validation
+├── security/
+│   ├── security_agent.py         # Behavioral prompt injection analysis
+│   └── validators.py             # Pydantic schema validation
 ├── tools/
-│   ├── validators.py             # Input validation and security
-│   ├── drive_client.py           # Public Drive API access (no OAuth)
-│   └── gemini_vision.py          # Multimodal PDF analysis via Gemini
+│   ├── drive_client.py           # Public Drive API access
+│   └── gemini_vision.py          # Multimodal PDF analysis
+├── tests/                        # Comprehensive test suite (unit, integration, e2e)
 └── mcp_server/
     └── server.py                 # MCP server: exposes Drive scanning
 ```
 
 ## 🛠️ Built With
 
-Built using Google's official [Agent Development Kit (ADK)](https://google.github.io/adk-docs/)
-and the Gemini API, following Google's recommended patterns for
-multi-agent orchestration (`SequentialAgent` + shared session state) and
-structured output (`response_mime_type="application/json"`).
+Built using Google's official [Agent Development Kit (ADK)](https://google.github.io/adk-docs/), Gemini API, FastAPI for async streaming, and Vanilla JS for an interactive reactive frontend.
